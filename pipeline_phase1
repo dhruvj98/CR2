@@ -1,0 +1,61 @@
+pipeline {
+    agent any
+    
+    stages {
+        stage('Check CSV') {
+            steps {
+                script {
+                    echo "CSV found. New CSV received."
+                }
+            }
+        }
+        
+        stage('Read CSV - Iterate over CSV - Update APIM') {
+            steps {
+                script {
+                    def csvFile = 'input.csv'  // The CSV file name
+                    def csvContent = readFile(csvFile)  // Read the entire CSV file
+                    
+                    // Split the content into lines (rows)
+                    def rows = csvContent.split('\n')
+                    
+                    // Iterate over each row
+                    for (int i = 1; i < rows.size(); i++) {  // Start from 1 to skip the header row
+                        def row = rows[i]
+                        def columns = row.split(',')
+                        
+                        def api = columns[0].trim()
+                        def version = columns[1].trim()
+                        def organizations = columns[2].trim()
+                        
+                        echo "Processing API: ${api}, Version: ${version}, Organizations: ${organizations}"
+                        
+                        // Run the command and capture its output
+                        def commandOutput = sh(script: './apim-cli-1.14.5/scripts/apim.sh api get -s api-env', returnStdout: true).trim()
+                        
+                        // Parse the output to find the api-id for the given API and Version
+                        def apiId = extractApiId(commandOutput, api, version)
+                        
+                        if (apiId) {
+                            echo "API ID for API: ${api}, Version: ${version} is ${apiId}"
+                        } else {
+                            echo "API ID not found for API: ${api}, Version: ${version}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+def extractApiId(output, api, version) {
+    // Regular expression pattern to match the rows in the output table
+    def pattern = /(?m)^\| ([a-z0-9-]+) \| \S+ \| ${api} \| ${version} \|/
+    def matcher = output =~ pattern
+    
+    if (matcher) {
+        return matcher[0][1]  // Return the captured API ID
+    } else {
+        return null  // Return null if no match is found
+    }
+}
